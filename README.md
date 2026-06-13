@@ -1,55 +1,52 @@
 # 7UB Chess
 
-Standalone Discord mini chess bot.
+Frontend-only chess board for Vercel.
+
+## What This Is
+
+This repository is only the web interface. It does not run a Discord bot, Express server, API, database, or background process.
+
+The app runs completely in the browser using `chess.js` for legal chess moves.
 
 ## Features
 
-- `/chess invite` opens a modal for player time and invitation timeout.
-- `/chess panel` sends a fixed panel where any member can create an invite.
-- Two players join from Discord; everyone else can watch.
-- Web chess board with legal move validation from the server.
-- Supports normal chess rules through `chess.js`: check, checkmate, castling, promotion, draw states, and legal moves.
-- Sends a Discord result message when the game ends.
+- Two-player chess on the same device.
+- Legal move validation, check, checkmate, castling, promotion, and draw detection.
+- Adjustable player names and time control.
+- Player clocks, resign button, board flip, move list, and local browser persistence.
+- Vercel-ready Vite build.
 
-## Setup
+## Deploy To Vercel
 
-1. Install dependencies:
+1. Import this repository in Vercel.
+2. Vercel should detect Vite automatically.
+3. Build command:
+
+```bash
+npm run build
+```
+
+4. Output directory:
+
+```text
+dist
+```
+
+No Discord tokens or backend environment variables are required.
+
+## Local Development
 
 ```bash
 npm install
+npm run dev
 ```
 
-2. Create `.env` from `.env.example`:
-
-```env
-DISCORD_TOKEN=your_bot_token
-CLIENT_ID=your_application_client_id
-GUILD_ID=optional_guild_id_for_fast_command_deploy
-PORT=3000
-PUBLIC_BASE_URL=https://your-public-domain.example
-```
-
-`PUBLIC_BASE_URL` must be a public HTTPS URL. If it is `localhost`, Discord members will not be able to open game links from their own devices.
-
-3. Deploy the slash command:
+Production build:
 
 ```bash
-npm run deploy
+npm run build
 ```
 
-4. Start the bot:
+## Important
 
-```bash
-npm start
-```
-
-Health check:
-
-```text
-GET /health
-```
-
-## Notes
-
-- Games are stored in memory. Restarting the process clears active games.
-- Use a reverse proxy, Cloudflare Tunnel, ngrok, or any deployed host to provide `PUBLIC_BASE_URL`.
+Because this is frontend-only, it cannot send Discord messages, host online multiplayer sessions, or keep shared game state between different devices. Those features require a separate backend/bot service.
