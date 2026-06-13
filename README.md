@@ -30,13 +30,21 @@ This repository runs on Vercel as:
 npm run build
 ```
 
-3. Output directory:
+3. Root directory:
+
+```text
+.
+```
+
+Leave it empty/default in Vercel. Do not set it to `src` or `api`.
+
+4. Output directory:
 
 ```text
 dist
 ```
 
-4. For reliable multiplayer on Vercel, add an Upstash Redis/Vercel KV database and set one of these env pairs:
+5. For reliable multiplayer on Vercel, add an Upstash Redis/Vercel KV database and set one of these env pairs:
 
 ```env
 UPSTASH_REDIS_REST_URL=
