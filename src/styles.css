@@ -86,7 +86,7 @@ select {
   min-height: 100vh;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) 340px;
+  grid-template-columns: minmax(320px, 1fr) 360px;
   gap: 24px;
   align-items: center;
   padding: 24px 0;
@@ -129,6 +129,30 @@ h1 {
   font-size: 0.9rem;
   font-weight: 900;
   text-align: center;
+}
+
+.create-panel,
+.control-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 16px 40px rgba(18, 33, 43, 0.1);
+  padding: 18px;
+}
+
+.create-panel {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 12px;
+}
+
+label span,
+.label {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 900;
 }
 
 .board-wrap {
@@ -243,37 +267,10 @@ h1 {
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
-.control-panel {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 16px 40px rgba(18, 33, 43, 0.1);
-  padding: 18px;
-}
-
 .panel-section + .panel-section {
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--line);
-}
-
-.setup-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-}
-
-.setup-grid.locked {
-  opacity: 0.62;
-}
-
-label span,
-.label {
-  display: block;
-  margin-bottom: 7px;
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 900;
 }
 
 .status-section strong {
@@ -287,6 +284,28 @@ label span,
   margin: 8px 0 0;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.links-section {
+  display: grid;
+  gap: 10px;
+}
+
+.link-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px;
+  gap: 8px;
+}
+
+.link-row input {
+  direction: ltr;
+  font-size: 0.82rem;
+}
+
+.link-row button {
+  min-width: 0;
+  padding-inline: 8px;
+  font-size: 0.82rem;
 }
 
 .actions {
@@ -357,5 +376,13 @@ label span,
 
   .square {
     font-size: clamp(1.7rem, 11vw, 3.4rem);
+  }
+
+  .link-row {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    grid-template-columns: 1fr;
   }
 }

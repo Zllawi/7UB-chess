@@ -1,38 +1,56 @@
 # 7UB Chess
 
-Frontend-only chess board for Vercel.
+Vercel chess invite app. It is not a Discord bot.
 
 ## What This Is
 
-This repository is only the web interface. It does not run a Discord bot, Express server, API, database, or background process.
+This repository runs on Vercel as:
 
-The app runs completely in the browser using `chess.js` for legal chess moves.
+- A Vite frontend.
+- Serverless API routes for chess rooms.
+- Optional Upstash/Vercel KV persistence for shared multiplayer state.
 
 ## Features
 
-- Two-player chess on the same device.
-- Legal move validation, check, checkmate, castling, promotion, and draw detection.
-- Adjustable player names and time control.
-- Player clocks, resign button, board flip, move list, and local browser persistence.
-- Vercel-ready Vite build.
+- Invite owner creates a room and shares three links: white/owner, black, and spectator.
+- Only the invite owner can start the game.
+- White sees the white pieces at the bottom.
+- Black sees the black pieces at the bottom.
+- Spectators can only watch and cannot move, start, resign, or flip the board.
+- Both players can resign.
+- Winner message includes who won against whom.
+- Server-side legal move validation with `chess.js`.
 
 ## Deploy To Vercel
 
 1. Import this repository in Vercel.
-2. Vercel should detect Vite automatically.
-3. Build command:
+2. Build command:
 
 ```bash
 npm run build
 ```
 
-4. Output directory:
+3. Output directory:
 
 ```text
 dist
 ```
 
-No Discord tokens or backend environment variables are required.
+4. For reliable multiplayer on Vercel, add an Upstash Redis/Vercel KV database and set one of these env pairs:
+
+```env
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+```
+
+or:
+
+```env
+KV_REST_API_URL=
+KV_REST_API_TOKEN=
+```
+
+Without Redis/KV, local development works with memory storage, but production serverless rooms can disappear between function cold starts.
 
 ## Local Development
 
@@ -47,6 +65,6 @@ Production build:
 npm run build
 ```
 
-## Important
+## Notes
 
-Because this is frontend-only, it cannot send Discord messages, host online multiplayer sessions, or keep shared game state between different devices. Those features require a separate backend/bot service.
+This repo intentionally does not include Discord Gateway code or bot tokens. A Discord bot must be deployed separately if you want automatic Discord messages.

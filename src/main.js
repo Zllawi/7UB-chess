@@ -1,7 +1,5 @@
-import { Chess } from "chess.js";
 import "./styles.css";
 
-const STORAGE_KEY = "7ub-chess-state-v1";
 const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const pieceSymbols = {
   wp: "♙",
@@ -18,24 +16,16 @@ const pieceSymbols = {
   bk: "♚"
 };
 
-const app = document.getElementById("app");
-
-let chess = new Chess();
-let moves = [];
+const params = new URLSearchParams(window.location.search);
+let roomId = params.get("room") || "";
+let token = params.get("token") || "";
+let state = null;
 let selectedSquare = "";
-let orientation = "white";
-let status = "setup";
-let result = null;
-let activeTurnStartedAt = 0;
-let clockSeconds = {
-  w: 10 * 60,
-  b: 10 * 60
-};
-let timeControlMinutes = 10;
-let playerNames = {
-  w: "White",
-  b: "Black"
-};
+let pending = false;
+let lastLoadedAt = Date.now();
+let shareLinks = null;
+
+const app = document.getElementById("app");
 
 app.innerHTML = `
   <main class="shell">
@@ -45,35 +35,21 @@ app.innerHTML = `
           <p class="eyebrow">7UB Chess</p>
           <h1>شطرنج مصغر</h1>
         </div>
-        <div class="turn-pill" id="turn-pill">إعداد</div>
+        <div class="turn-pill" id="turn-pill">دعوة</div>
       </header>
 
-      <div class="board-wrap">
-        <div class="player-strip" id="black-strip">
-          <span id="black-name">Black</span>
-          <strong id="black-clock">10:00</strong>
-        </div>
-        <div class="board" id="board" aria-label="Chess board"></div>
-        <div class="player-strip" id="white-strip">
-          <span id="white-name">White</span>
-          <strong id="white-clock">10:00</strong>
-        </div>
-      </div>
-    </section>
-
-    <aside class="control-panel">
-      <section class="panel-section setup-grid" id="setup-panel">
+      <section class="create-panel" id="create-panel">
         <label>
-          <span>الأبيض</span>
-          <input id="white-input" maxlength="24" value="White" />
+          <span>اسم الأبيض / صاحب الدعوة</span>
+          <input id="create-white" maxlength="24" value="White" />
         </label>
         <label>
-          <span>الأسود</span>
-          <input id="black-input" maxlength="24" value="Black" />
+          <span>اسم الأسود</span>
+          <input id="create-black" maxlength="24" value="Black" />
         </label>
         <label>
           <span>وقت كل لاعب</span>
-          <select id="time-select">
+          <select id="create-time">
             <option value="3">3 دقائق</option>
             <option value="5">5 دقائق</option>
             <option value="10" selected>10 دقائق</option>
@@ -81,22 +57,52 @@ app.innerHTML = `
             <option value="30">30 دقيقة</option>
           </select>
         </label>
-        <button id="start-button" type="button">بدء مباراة</button>
+        <button id="create-button" type="button">إنشاء دعوة</button>
       </section>
 
+      <div class="board-wrap" id="board-wrap" hidden>
+        <div class="player-strip" id="top-strip">
+          <span id="top-name">Black</span>
+          <strong id="top-clock">0:00</strong>
+        </div>
+        <div class="board" id="board" aria-label="Chess board"></div>
+        <div class="player-strip" id="bottom-strip">
+          <span id="bottom-name">White</span>
+          <strong id="bottom-clock">0:00</strong>
+        </div>
+      </div>
+    </section>
+
+    <aside class="control-panel">
       <section class="panel-section status-section">
         <span class="label">الحالة</span>
-        <strong id="status-title">اضبط المباراة</strong>
-        <p id="status-detail">اختار الأسماء والوقت ثم ابدأ اللعب على نفس الجهاز.</p>
+        <strong id="status-title">إنشاء دعوة</strong>
+        <p id="status-detail">صاحب الدعوة ينشئ الغرفة، ثم يرسل رابط الأسود ورابط المشاهدة.</p>
       </section>
 
-      <section class="panel-section actions">
-        <button id="flip-button" type="button">قلب الرقعة</button>
-        <button id="resign-button" class="danger" type="button" disabled>انسحاب</button>
-        <button id="reset-button" type="button">تصفير</button>
+      <section class="panel-section links-section" id="links-section" hidden>
+        <span class="label">روابط الدعوة</span>
+        <div class="link-row">
+          <input id="white-link" readonly />
+          <button data-copy="white-link" type="button">نسخ الأبيض</button>
+        </div>
+        <div class="link-row">
+          <input id="black-link" readonly />
+          <button data-copy="black-link" type="button">نسخ الأسود</button>
+        </div>
+        <div class="link-row">
+          <input id="watch-link" readonly />
+          <button data-copy="watch-link" type="button">نسخ المشاهدة</button>
+        </div>
       </section>
 
-      <section class="panel-section moves-section">
+      <section class="panel-section actions" id="actions-section" hidden>
+        <button id="start-button" type="button">بدء المباراة</button>
+        <button id="resign-button" class="danger" type="button">انسحاب</button>
+        <button id="refresh-button" type="button">تحديث</button>
+      </section>
+
+      <section class="panel-section moves-section" id="moves-section" hidden>
         <span class="label">النقلات</span>
         <ol id="move-list"></ol>
       </section>
@@ -104,265 +110,172 @@ app.innerHTML = `
   </main>
 `;
 
+const createPanel = document.getElementById("create-panel");
+const createWhite = document.getElementById("create-white");
+const createBlack = document.getElementById("create-black");
+const createTime = document.getElementById("create-time");
+const createButton = document.getElementById("create-button");
+const boardWrap = document.getElementById("board-wrap");
 const boardEl = document.getElementById("board");
 const turnPill = document.getElementById("turn-pill");
-const whiteNameEl = document.getElementById("white-name");
-const blackNameEl = document.getElementById("black-name");
-const whiteClockEl = document.getElementById("white-clock");
-const blackClockEl = document.getElementById("black-clock");
-const whiteStrip = document.getElementById("white-strip");
-const blackStrip = document.getElementById("black-strip");
+const topStrip = document.getElementById("top-strip");
+const bottomStrip = document.getElementById("bottom-strip");
+const topName = document.getElementById("top-name");
+const bottomName = document.getElementById("bottom-name");
+const topClock = document.getElementById("top-clock");
+const bottomClock = document.getElementById("bottom-clock");
 const statusTitle = document.getElementById("status-title");
 const statusDetail = document.getElementById("status-detail");
-const moveList = document.getElementById("move-list");
-const setupPanel = document.getElementById("setup-panel");
-const whiteInput = document.getElementById("white-input");
-const blackInput = document.getElementById("black-input");
-const timeSelect = document.getElementById("time-select");
+const linksSection = document.getElementById("links-section");
+const whiteLink = document.getElementById("white-link");
+const blackLink = document.getElementById("black-link");
+const watchLink = document.getElementById("watch-link");
+const actionsSection = document.getElementById("actions-section");
 const startButton = document.getElementById("start-button");
-const flipButton = document.getElementById("flip-button");
 const resignButton = document.getElementById("resign-button");
-const resetButton = document.getElementById("reset-button");
+const refreshButton = document.getElementById("refresh-button");
+const movesSection = document.getElementById("moves-section");
+const moveList = document.getElementById("move-list");
 
 function colorLabel(color) {
   return color === "w" ? "الأبيض" : "الأسود";
 }
 
-function clampName(value, fallback) {
-  const normalized = String(value || "").trim().slice(0, 24);
-  return normalized || fallback;
+function playerName(color) {
+  if (!state) return colorLabel(color);
+  return color === "w" ? state.players.white.name : state.players.black.name;
 }
 
-function formatClock(totalSeconds) {
-  const safeSeconds = Math.max(0, Math.ceil(Number(totalSeconds || 0)));
-  const minutes = Math.floor(safeSeconds / 60);
-  const seconds = safeSeconds % 60;
+function orientation() {
+  return state?.playerColor === "b" ? "black" : "white";
+}
+
+function formatClock(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(Number(ms || 0) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-function getDisplayedClock() {
-  const output = { ...clockSeconds };
-  if (status !== "active" || !activeTurnStartedAt) return output;
-  const turn = chess.turn();
-  const elapsed = Math.floor((Date.now() - activeTurnStartedAt) / 1000);
-  output[turn] = Math.max(0, output[turn] - elapsed);
-  return output;
-}
-
-function applyClock() {
-  if (status !== "active" || !activeTurnStartedAt) return;
-  const turn = chess.turn();
-  const elapsed = Math.floor((Date.now() - activeTurnStartedAt) / 1000);
-  clockSeconds[turn] = Math.max(0, clockSeconds[turn] - elapsed);
-  activeTurnStartedAt = Date.now();
-  if (clockSeconds[turn] <= 0) {
-    finishGame({
-      winner: turn === "w" ? "b" : "w",
-      reason: `انتهى وقت ${colorLabel(turn)}.`
-    });
+function displayedClocks() {
+  if (!state?.clocks) return { w: 0, b: 0 };
+  const clocks = {
+    w: Number(state.clocks.whiteMs || 0),
+    b: Number(state.clocks.blackMs || 0)
+  };
+  if (state.status === "active" && state.turn) {
+    const elapsed = Math.max(0, Date.now() - lastLoadedAt);
+    clocks[state.turn] = Math.max(0, clocks[state.turn] - elapsed);
   }
+  return clocks;
 }
 
 function squareFrom(row, col) {
-  const file = orientation === "black" ? files[7 - col] : files[col];
-  const rank = orientation === "black" ? row + 1 : 8 - row;
+  const boardOrientation = orientation();
+  const file = boardOrientation === "black" ? files[7 - col] : files[col];
+  const rank = boardOrientation === "black" ? row + 1 : 8 - row;
   return `${file}${rank}`;
 }
 
 function pieceAt(square) {
-  return chess.get(square);
+  if (!state || !square) return null;
+  const fileIndex = files.indexOf(square[0]);
+  const rank = Number(square[1]);
+  const rowIndex = 8 - rank;
+  if (fileIndex < 0 || rowIndex < 0 || rowIndex > 7) return null;
+  return state.board[rowIndex][fileIndex];
 }
 
 function legalMovesFrom(square) {
-  if (status !== "active") return [];
-  return chess.moves({ square, verbose: true });
+  if (!state || !square) return [];
+  return (state.legalMoves || []).filter((move) => move.from === square);
 }
 
 function canSelect(square) {
   const piece = pieceAt(square);
-  return Boolean(piece && piece.color === chess.turn() && legalMovesFrom(square).length);
+  return Boolean(
+    state?.canMove &&
+      piece &&
+      piece.color === state.playerColor &&
+      legalMovesFrom(square).length
+  );
 }
 
-function serializeState() {
-  return {
-    fen: chess.fen(),
-    moves,
-    orientation,
-    status,
-    result,
-    activeTurnStartedAt,
-    clockSeconds,
-    timeControlMinutes,
-    playerNames
-  };
+function apiRoomUrl(extra = "") {
+  return `/api/rooms/${encodeURIComponent(roomId)}${extra}`;
 }
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeState()));
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "Request failed.");
+  return payload;
 }
 
-function loadState() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (!saved || typeof saved !== "object") return;
-    chess = new Chess(saved.fen || undefined);
-    moves = Array.isArray(saved.moves) ? saved.moves : [];
-    orientation = saved.orientation === "black" ? "black" : "white";
-    status = ["setup", "active", "finished"].includes(saved.status) ? saved.status : "setup";
-    result = saved.result || null;
-    activeTurnStartedAt = Number(saved.activeTurnStartedAt || 0);
-    clockSeconds = {
-      w: Math.max(0, Number(saved.clockSeconds?.w || 600)),
-      b: Math.max(0, Number(saved.clockSeconds?.b || 600))
-    };
-    timeControlMinutes = Math.max(1, Number(saved.timeControlMinutes || 10));
-    playerNames = {
-      w: clampName(saved.playerNames?.w, "White"),
-      b: clampName(saved.playerNames?.b, "Black")
-    };
-  } catch {
-    localStorage.removeItem(STORAGE_KEY);
-  }
-}
-
-function statusCopy() {
-  if (status === "setup") {
-    return {
-      title: "اضبط المباراة",
-      detail: "اختار الأسماء والوقت ثم ابدأ اللعب على نفس الجهاز.",
-      pill: "إعداد"
-    };
-  }
-
-  if (status === "finished") {
-    if (result?.winner) {
-      return {
-        title: `الفائز: ${playerNames[result.winner]}`,
-        detail: result.reason || "انتهت المباراة.",
-        pill: "انتهت"
-      };
-    }
-    return {
-      title: "تعادل",
-      detail: result?.reason || "انتهت المباراة بالتعادل.",
-      pill: "تعادل"
-    };
-  }
-
-  const turn = chess.turn();
-  const check = chess.isCheck() ? " يوجد كش." : "";
-  return {
-    title: `دور ${playerNames[turn]}`,
-    detail: `يلعب ${colorLabel(turn)} الآن.${check}`,
-    pill: colorLabel(turn)
-  };
-}
-
-function renderBoard() {
-  boardEl.innerHTML = "";
-  const targetSquares = new Set(legalMovesFrom(selectedSquare).map((move) => move.to));
-  const lastMove = moves.at(-1) || {};
-
-  for (let row = 0; row < 8; row += 1) {
-    for (let col = 0; col < 8; col += 1) {
-      const square = squareFrom(row, col);
-      const piece = pieceAt(square);
-      const fileIndex = files.indexOf(square[0]);
-      const rank = Number(square[1]);
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = [
-        "square",
-        (fileIndex + rank) % 2 === 0 ? "light" : "dark",
-        canSelect(square) ? "own" : "",
-        selectedSquare === square ? "selected" : "",
-        targetSquares.has(square) ? "target" : "",
-        square === lastMove.from || square === lastMove.to ? "last" : ""
-      ]
-        .filter(Boolean)
-        .join(" ");
-      button.dataset.square = square;
-      button.setAttribute("aria-label", square);
-
-      if (piece) {
-        const symbol = document.createElement("span");
-        symbol.className = piece.color === "w" ? "piece-white" : "piece-black";
-        symbol.textContent = pieceSymbols[`${piece.color}${piece.type}`] || "";
-        button.appendChild(symbol);
-      }
-
-      button.addEventListener("click", () => handleSquareClick(square));
-      boardEl.appendChild(button);
-    }
-  }
-}
-
-function renderMoves() {
-  moveList.innerHTML = "";
-  for (let index = 0; index < moves.length; index += 2) {
-    const item = document.createElement("li");
-    const whiteMove = moves[index]?.san || "";
-    const blackMove = moves[index + 1]?.san || "";
-    item.textContent = `${Math.floor(index / 2) + 1}. ${whiteMove}${blackMove ? `   ${blackMove}` : ""}`;
-    moveList.appendChild(item);
-  }
-}
-
-function render() {
-  const clocks = getDisplayedClock();
-  const copy = statusCopy();
-  whiteNameEl.textContent = playerNames.w;
-  blackNameEl.textContent = playerNames.b;
-  whiteClockEl.textContent = formatClock(clocks.w);
-  blackClockEl.textContent = formatClock(clocks.b);
-  whiteStrip.classList.toggle("active", status === "active" && chess.turn() === "w");
-  blackStrip.classList.toggle("active", status === "active" && chess.turn() === "b");
-  setupPanel.classList.toggle("locked", status === "active");
-  resignButton.disabled = status !== "active";
-  statusTitle.textContent = copy.title;
-  statusDetail.textContent = copy.detail;
-  turnPill.textContent = copy.pill;
-  whiteInput.value = playerNames.w;
-  blackInput.value = playerNames.b;
-  timeSelect.value = String(timeControlMinutes);
-  renderMoves();
-  renderBoard();
-}
-
-function finishGame(nextResult) {
-  status = "finished";
-  result = nextResult;
-  selectedSquare = "";
-  activeTurnStartedAt = 0;
-  saveState();
+async function loadRoom() {
+  if (!roomId) return;
+  const url = new URL(apiRoomUrl(), window.location.origin);
+  if (token) url.searchParams.set("token", token);
+  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "تعذر تحميل الغرفة.");
+  state = payload.room;
+  if (state.links) shareLinks = state.links;
+  lastLoadedAt = Date.now();
+  if (selectedSquare && !canSelect(selectedSquare)) selectedSquare = "";
   render();
 }
 
-function checkGameEnd(lastMove) {
-  if (chess.isCheckmate()) {
-    finishGame({
-      winner: lastMove.color,
-      reason: `كش مات. ${playerNames[lastMove.color]} فاز.`
+async function createRoom() {
+  if (pending) return;
+  pending = true;
+  createButton.disabled = true;
+  statusDetail.textContent = "جاري إنشاء الدعوة...";
+  try {
+    const payload = await postJson("/api/rooms", {
+      whiteName: createWhite.value,
+      blackName: createBlack.value,
+      timeMinutes: createTime.value
     });
-    return true;
+    state = payload.room;
+    roomId = state.id;
+    shareLinks = state.links;
+    token = new URL(shareLinks.white).searchParams.get("token") || "";
+    window.history.replaceState(null, "", `/?room=${encodeURIComponent(roomId)}&token=${encodeURIComponent(token)}`);
+    render();
+  } catch (error) {
+    statusTitle.textContent = "خطأ";
+    statusDetail.textContent = error.message;
+  } finally {
+    pending = false;
+    createButton.disabled = false;
   }
-
-  if (chess.isDraw()) {
-    let reason = "انتهت المباراة بالتعادل.";
-    if (chess.isStalemate()) reason = "تعادل: لا توجد حركة قانونية.";
-    else if (chess.isInsufficientMaterial()) reason = "تعادل: قطع غير كافية للمات.";
-    else if (chess.isThreefoldRepetition()) reason = "تعادل: تكرار الوضع ثلاث مرات.";
-    finishGame({ winner: null, reason });
-    return true;
-  }
-
-  return false;
 }
 
-function makeMove(from, to) {
-  applyClock();
-  if (status !== "active") return;
+async function startRoom() {
+  if (!state?.canStart || pending) return;
+  pending = true;
+  try {
+    const payload = await postJson(apiRoomUrl("/start"), { token });
+    state = payload.room;
+    lastLoadedAt = Date.now();
+    render();
+  } catch (error) {
+    statusDetail.textContent = error.message;
+  } finally {
+    pending = false;
+  }
+}
 
+async function sendMove(from, to) {
+  if (!state?.canMove || pending) return;
   const promotionMoves = legalMovesFrom(from).filter((move) => move.to === to && move.promotion);
   let promotion = "";
   if (promotionMoves.length) {
@@ -372,28 +285,135 @@ function makeMove(from, to) {
       : "q";
   }
 
-  const move = chess.move({ from, to, promotion: promotion || undefined });
-  if (!move) return;
-  moves.push({
-    color: move.color,
-    from: move.from,
-    to: move.to,
-    san: move.san,
-    piece: move.piece,
-    captured: move.captured || "",
-    promotion: move.promotion || ""
-  });
-  selectedSquare = "";
-
-  if (!checkGameEnd(move)) {
-    activeTurnStartedAt = Date.now();
-    saveState();
+  pending = true;
+  try {
+    const payload = await postJson(apiRoomUrl("/move"), {
+      token,
+      from,
+      to,
+      promotion
+    });
+    state = payload.room;
+    selectedSquare = "";
+    lastLoadedAt = Date.now();
     render();
+  } catch (error) {
+    statusDetail.textContent = error.message;
+    await loadRoom().catch(() => null);
+  } finally {
+    pending = false;
+  }
+}
+
+async function resign() {
+  if (!state?.canResign || pending) return;
+  if (!window.confirm(`${playerName(state.playerColor)} ينسحب؟`)) return;
+  pending = true;
+  try {
+    const payload = await postJson(apiRoomUrl("/resign"), { token });
+    state = payload.room;
+    selectedSquare = "";
+    lastLoadedAt = Date.now();
+    render();
+  } catch (error) {
+    statusDetail.textContent = error.message;
+  } finally {
+    pending = false;
+  }
+}
+
+function statusCopy() {
+  if (!roomId) {
+    return {
+      title: "إنشاء دعوة",
+      detail: "صاحب الدعوة ينشئ الغرفة، ثم يرسل رابط الأسود ورابط المشاهدة.",
+      pill: "دعوة"
+    };
+  }
+  if (!state) {
+    return {
+      title: "تحميل",
+      detail: "جاري تحميل الغرفة...",
+      pill: "تحميل"
+    };
+  }
+  if (state.status === "waiting") {
+    if (state.isOwner) {
+      return {
+        title: "في انتظار الأسود",
+        detail: state.players.black.joined
+          ? "اللاعب الأسود دخل. صاحب الدعوة يقدر يبدأ المباراة الآن."
+          : "أرسل رابط الأسود للاعب الثاني. زر البدء يظهر بعد دخوله.",
+        pill: "انتظار"
+      };
+    }
+    return {
+      title: "في انتظار البداية",
+      detail: state.role === "black"
+        ? "دخلت كلاعب أسود. صاحب الدعوة فقط يبدأ المباراة."
+        : "أنت تشاهد الغرفة. صاحب الدعوة فقط يبدأ المباراة.",
+      pill: state.role === "spectator" ? "مشاهد" : colorLabel(state.playerColor)
+    };
+  }
+  if (state.status === "finished") {
+    return {
+      title: state.result?.winnerColor
+        ? `الفائز: ${playerName(state.result.winnerColor)}`
+        : "تعادل",
+      detail: state.result?.summary || "انتهت المباراة.",
+      pill: "انتهت"
+    };
+  }
+
+  const check = state.inCheck ? " يوجد كش." : "";
+  return {
+    title: state.canMove ? "دورك" : `دور ${playerName(state.turn)}`,
+    detail: state.role === "spectator"
+      ? `أنت تشاهد فقط. الدور على ${playerName(state.turn)}.${check}`
+      : `أنت تلعب كـ ${colorLabel(state.playerColor)}. الدور على ${playerName(state.turn)}.${check}`,
+    pill: state.role === "spectator" ? "مشاهد" : colorLabel(state.playerColor)
+  };
+}
+
+function renderBoard() {
+  boardEl.innerHTML = "";
+  if (!state) return;
+  const targets = new Set(legalMovesFrom(selectedSquare).map((move) => move.to));
+  const lastMove = state.lastMove || {};
+
+  for (let row = 0; row < 8; row += 1) {
+    for (let col = 0; col < 8; col += 1) {
+      const square = squareFrom(row, col);
+      const piece = pieceAt(square);
+      const fileIndex = files.indexOf(square[0]);
+      const rank = Number(square[1]);
+      const node = document.createElement("button");
+      node.type = "button";
+      node.className = [
+        "square",
+        (fileIndex + rank) % 2 === 0 ? "light" : "dark",
+        canSelect(square) ? "own" : "",
+        selectedSquare === square ? "selected" : "",
+        targets.has(square) ? "target" : "",
+        square === lastMove.from || square === lastMove.to ? "last" : ""
+      ]
+        .filter(Boolean)
+        .join(" ");
+      node.setAttribute("aria-label", square);
+      if (piece) {
+        const symbol = document.createElement("span");
+        symbol.className = piece.color === "w" ? "piece-white" : "piece-black";
+        symbol.textContent = pieceSymbols[`${piece.color}${piece.type}`] || "";
+        node.appendChild(symbol);
+      }
+      node.addEventListener("click", () => handleSquareClick(square));
+      boardEl.appendChild(node);
+    }
   }
 }
 
 function handleSquareClick(square) {
-  if (status !== "active") return;
+  if (!state?.canMove) return;
   if (!selectedSquare) {
     if (canSelect(square)) {
       selectedSquare = square;
@@ -401,90 +421,114 @@ function handleSquareClick(square) {
     }
     return;
   }
-
   if (square === selectedSquare) {
     selectedSquare = "";
     renderBoard();
     return;
   }
-
   if (canSelect(square)) {
     selectedSquare = square;
     renderBoard();
     return;
   }
-
   if (legalMovesFrom(selectedSquare).some((move) => move.to === square)) {
-    makeMove(selectedSquare, square);
+    void sendMove(selectedSquare, square);
     return;
   }
-
   selectedSquare = "";
   renderBoard();
 }
 
-function startGame() {
-  timeControlMinutes = Math.max(1, Number(timeSelect.value || 10));
-  playerNames = {
-    w: clampName(whiteInput.value, "White"),
-    b: clampName(blackInput.value, "Black")
-  };
-  chess = new Chess();
-  moves = [];
-  selectedSquare = "";
-  status = "active";
-  result = null;
-  clockSeconds = {
-    w: timeControlMinutes * 60,
-    b: timeControlMinutes * 60
-  };
-  activeTurnStartedAt = Date.now();
-  saveState();
-  render();
+function renderMoves() {
+  moveList.innerHTML = "";
+  for (let index = 0; index < (state?.moves || []).length; index += 2) {
+    const item = document.createElement("li");
+    const whiteMove = state.moves[index]?.san || "";
+    const blackMove = state.moves[index + 1]?.san || "";
+    item.textContent = `${Math.floor(index / 2) + 1}. ${whiteMove}${blackMove ? `   ${blackMove}` : ""}`;
+    moveList.appendChild(item);
+  }
 }
 
-function resetGame() {
-  const shouldReset = status === "setup" || window.confirm("تأكيد تصفير المباراة؟");
-  if (!shouldReset) return;
-  chess = new Chess();
-  moves = [];
-  selectedSquare = "";
-  status = "setup";
-  result = null;
-  activeTurnStartedAt = 0;
-  clockSeconds = {
-    w: timeControlMinutes * 60,
-    b: timeControlMinutes * 60
-  };
-  localStorage.removeItem(STORAGE_KEY);
-  render();
+function renderLinks() {
+  const visible = Boolean(shareLinks && state?.canShare);
+  linksSection.hidden = !visible;
+  if (!visible) return;
+  whiteLink.value = shareLinks.white || "";
+  blackLink.value = shareLinks.black || "";
+  watchLink.value = shareLinks.watch || "";
 }
 
-startButton.addEventListener("click", startGame);
-flipButton.addEventListener("click", () => {
-  orientation = orientation === "white" ? "black" : "white";
-  saveState();
+function renderClocks() {
+  if (!state) return;
+  const clocks = displayedClocks();
+  const bottomColor = orientation() === "black" ? "b" : "w";
+  const topColor = bottomColor === "w" ? "b" : "w";
+  bottomName.textContent = playerName(bottomColor);
+  topName.textContent = playerName(topColor);
+  bottomClock.textContent = formatClock(clocks[bottomColor]);
+  topClock.textContent = formatClock(clocks[topColor]);
+  bottomStrip.classList.toggle("active", state.status === "active" && state.turn === bottomColor);
+  topStrip.classList.toggle("active", state.status === "active" && state.turn === topColor);
+}
+
+function render() {
+  const copy = statusCopy();
+  createPanel.hidden = Boolean(roomId);
+  boardWrap.hidden = !roomId || !state;
+  actionsSection.hidden = !roomId || !state;
+  movesSection.hidden = !roomId || !state;
+  startButton.hidden = !state?.isOwner;
+  startButton.disabled = !state?.canStart || pending;
+  resignButton.hidden = state?.role === "spectator";
+  resignButton.disabled = !state?.canResign || pending;
+  statusTitle.textContent = copy.title;
+  statusDetail.textContent = copy.detail;
+  turnPill.textContent = copy.pill;
+  renderLinks();
+  renderClocks();
+  renderMoves();
   renderBoard();
-});
-resignButton.addEventListener("click", () => {
-  if (status !== "active") return;
-  const loser = chess.turn();
-  const winner = loser === "w" ? "b" : "w";
-  if (!window.confirm(`${playerNames[loser]} ينسحب؟`)) return;
-  applyClock();
-  finishGame({
-    winner,
-    reason: `${playerNames[loser]} انسحب.`
+}
+
+document.querySelectorAll("[data-copy]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const input = document.getElementById(button.dataset.copy);
+    await navigator.clipboard.writeText(input.value);
+    button.textContent = "تم النسخ";
+    setTimeout(() => {
+      button.textContent =
+        button.dataset.copy === "white-link"
+          ? "نسخ الأبيض"
+          : button.dataset.copy === "black-link"
+            ? "نسخ الأسود"
+            : "نسخ المشاهدة";
+    }, 1200);
   });
 });
-resetButton.addEventListener("click", resetGame);
+
+createButton.addEventListener("click", () => void createRoom());
+startButton.addEventListener("click", () => void startRoom());
+resignButton.addEventListener("click", () => void resign());
+refreshButton.addEventListener("click", () => void loadRoom().catch((error) => {
+  statusDetail.textContent = error.message;
+}));
 
 setInterval(() => {
-  if (status !== "active") return;
-  applyClock();
-  saveState();
-  render();
-}, 1000);
+  if (!state) return;
+  renderClocks();
+}, 250);
 
-loadState();
-render();
+setInterval(() => {
+  if (!roomId || pending) return;
+  void loadRoom().catch(() => null);
+}, 2000);
+
+if (roomId) {
+  loadRoom().catch((error) => {
+    statusTitle.textContent = "خطأ";
+    statusDetail.textContent = error.message;
+  });
+} else {
+  render();
+}
