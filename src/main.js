@@ -201,10 +201,6 @@ function canSelect(square) {
   );
 }
 
-function apiRoomUrl(extra = "") {
-  return `/api/rooms/${encodeURIComponent(roomId)}${extra}`;
-}
-
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",
@@ -221,7 +217,8 @@ async function postJson(url, body) {
 
 async function loadRoom() {
   if (!roomId) return;
-  const url = new URL(apiRoomUrl(), window.location.origin);
+  const url = new URL("/api/room", window.location.origin);
+  url.searchParams.set("id", roomId);
   if (token) url.searchParams.set("token", token);
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const payload = await response.json().catch(() => ({}));
@@ -263,7 +260,11 @@ async function startRoom() {
   if (!state?.canStart || pending) return;
   pending = true;
   try {
-    const payload = await postJson(apiRoomUrl("/start"), { token });
+    const payload = await postJson("/api/room", {
+      action: "start",
+      roomId,
+      token
+    });
     state = payload.room;
     lastLoadedAt = Date.now();
     render();
@@ -287,7 +288,9 @@ async function sendMove(from, to) {
 
   pending = true;
   try {
-    const payload = await postJson(apiRoomUrl("/move"), {
+    const payload = await postJson("/api/room", {
+      action: "move",
+      roomId,
       token,
       from,
       to,
@@ -310,7 +313,11 @@ async function resign() {
   if (!window.confirm(`${playerName(state.playerColor)} ينسحب؟`)) return;
   pending = true;
   try {
-    const payload = await postJson(apiRoomUrl("/resign"), { token });
+    const payload = await postJson("/api/room", {
+      action: "resign",
+      roomId,
+      token
+    });
     state = payload.room;
     selectedSquare = "";
     lastLoadedAt = Date.now();

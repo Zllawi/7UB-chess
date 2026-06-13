@@ -7,7 +7,7 @@ Vercel chess invite app. It is not a Discord bot.
 This repository runs on Vercel as:
 
 - A Vite frontend.
-- Serverless API routes for chess rooms.
+- Serverless API routes for chess rooms. The browser uses the flat `/api/room?id=...` endpoint for Vercel compatibility.
 - Optional Upstash/Vercel KV persistence for shared multiplayer state.
 
 ## Features
