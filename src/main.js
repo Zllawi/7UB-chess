@@ -17,13 +17,22 @@ const pieceSymbols = {
 };
 
 const params = new URLSearchParams(window.location.search);
-let roomId = params.get("room") || "";
+const pathRoomMatch = window.location.pathname.match(/^\/room\/([^/?#]+)/u);
+let roomId = pathRoomMatch ? decodeURIComponent(pathRoomMatch[1]) : params.get("room") || "";
 let token = params.get("token") || "";
+if (roomId && !pathRoomMatch) {
+  window.history.replaceState(
+    null,
+    "",
+    `/room/${encodeURIComponent(roomId)}${token ? `?token=${encodeURIComponent(token)}` : ""}`
+  );
+}
 let state = null;
 let selectedSquare = "";
 let pending = false;
 let lastLoadedAt = Date.now();
 let shareLinks = null;
+let loadErrorMessage = "";
 
 const app = document.getElementById("app");
 
@@ -217,6 +226,7 @@ async function postJson(url, body) {
 
 async function loadRoom() {
   if (!roomId) return;
+  loadErrorMessage = "";
   const url = new URL("/api/room", window.location.origin);
   url.searchParams.set("id", roomId);
   if (token) url.searchParams.set("token", token);
@@ -245,7 +255,11 @@ async function createRoom() {
     roomId = state.id;
     shareLinks = state.links;
     token = new URL(shareLinks.white).searchParams.get("token") || "";
-    window.history.replaceState(null, "", `/?room=${encodeURIComponent(roomId)}&token=${encodeURIComponent(token)}`);
+    window.history.replaceState(
+      null,
+      "",
+      `/room/${encodeURIComponent(roomId)}?token=${encodeURIComponent(token)}`
+    );
     render();
   } catch (error) {
     statusTitle.textContent = "خطأ";
@@ -339,9 +353,9 @@ function statusCopy() {
   }
   if (!state) {
     return {
-      title: "تحميل",
-      detail: "جاري تحميل الغرفة...",
-      pill: "تحميل"
+      title: loadErrorMessage ? "تعذر فتح المباراة" : "تحميل المباراة",
+      detail: loadErrorMessage || "جاري إدخالك للمباراة...",
+      pill: loadErrorMessage ? "خطأ" : "تحميل"
     };
   }
   if (state.status === "waiting") {
@@ -532,9 +546,10 @@ setInterval(() => {
 }, 2000);
 
 if (roomId) {
+  render();
   loadRoom().catch((error) => {
-    statusTitle.textContent = "خطأ";
-    statusDetail.textContent = error.message;
+    loadErrorMessage = error.message;
+    render();
   });
 } else {
   render();

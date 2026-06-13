@@ -13,6 +13,7 @@ This repository runs on Vercel as:
 ## Features
 
 - Invite owner creates a room and shares three links: white/owner, black, and spectator.
+- Room links use `/room/<roomId>` so opening an invite enters the match view directly.
 - Only the invite owner can start the game.
 - White sees the white pieces at the bottom.
 - Black sees the black pieces at the bottom.

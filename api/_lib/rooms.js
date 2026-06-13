@@ -210,9 +210,9 @@ export function serializeRoom(room, { token = "", includeLinks = false, origin =
   const links =
     includeLinks && role.owner && origin
       ? {
-          white: `${origin}/?room=${encodeURIComponent(room.id)}&token=${encodeURIComponent(room.players.w.token)}`,
-          black: `${origin}/?room=${encodeURIComponent(room.id)}&token=${encodeURIComponent(room.players.b.token)}`,
-          watch: `${origin}/?room=${encodeURIComponent(room.id)}`
+          white: `${origin}/room/${encodeURIComponent(room.id)}?token=${encodeURIComponent(room.players.w.token)}`,
+          black: `${origin}/room/${encodeURIComponent(room.id)}?token=${encodeURIComponent(room.players.b.token)}`,
+          watch: `${origin}/room/${encodeURIComponent(room.id)}`
         }
       : null;
 
